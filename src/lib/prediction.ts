@@ -606,12 +606,26 @@ export class PredictionEngine {
     const kellySide = kellyPrediction.recommendedBet.type === 'home_win' ? 'HOME' : 'AWAY';
     recommendations.push(kellySide);
 
-    // Récupérer la recommandation des bots
+    // Récupérer la recommandation des bots - extraire l'équipe depuis la sélection
     if (botPredictions?.maitre?.decision_finale?.selection) {
       const botSelection = botPredictions.maitre.decision_finale.selection;
-      if (typeof botSelection === 'string' && botSelection.includes('Victoire')) {
-        const botSide = botSelection.toLowerCase().includes(kellyPrediction.recommendedBet.description.toLowerCase().split(' ')[1]?.toLowerCase()) ? kellySide : (kellySide === 'HOME' ? 'AWAY' : 'HOME');
-        recommendations.push(botSide);
+      if (typeof botSelection === 'string') {
+        // Extraire le nom de l'équipe depuis la sélection (ex: "Victoire Arsenal")
+        const match = botSelection.match(/Victoire\s+(.+)/i);
+        if (match) {
+          const botTeam = match[1].trim().toLowerCase();
+          const homeTeam = kellyPrediction.recommendedBet.description.toLowerCase().includes('victoire') 
+            ? kellyPrediction.recommendedBet.description.split(' ').slice(1).join(' ').toLowerCase()
+            : '';
+          const awayTeam = ''; // Simplification - on assume que si ce n'est pas home, c'est away
+          
+          // Déterminer le côté basé sur le nom de l'équipe
+          if (botTeam.includes(homeTeam) || homeTeam.includes(botTeam)) {
+            recommendations.push('HOME');
+          } else {
+            recommendations.push('AWAY');
+          }
+        }
       }
     }
 
@@ -633,7 +647,12 @@ export class PredictionEngine {
     if (kellySide !== finalSide && (homeCount > 1 || awayCount > 1)) {
       // Contradiction détectée - ajuster la confiance
       kellyPrediction.confidence = Math.max(30, kellyPrediction.confidence - 20);
-      kellyPrediction.reasoning.push('Conflit entre systèmes - confiance réduite');
+      kellyPrediction.reasoning.push('⚠️ Conflit entre systèmes: Kelly=' + kellySide + ' vs Consensus=' + finalSide);
+      
+      // Si le consensus est fort (2+ systèmes d'accord), envisager de changer la recommandation
+      if (Math.max(homeCount, awayCount) >= 2) {
+        kellyPrediction.reasoning.push('Consensus fort détecté - vérification recommandée');
+      }
     }
 
     // Ajouter le consensus au reasoning
