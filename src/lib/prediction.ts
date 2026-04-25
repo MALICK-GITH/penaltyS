@@ -1,7 +1,88 @@
-import { Match, Prediction, BetRecommendation, TeamStats } from '@/types';
+import { Match, Prediction, BetRecommendation, TeamStats, MatchEvaluationInput, EvaluationResult } from '@/types';
 import { mockData } from './api';
+import { genererPredictionUnifiee, BetInput, MatchContext } from './bots';
+import { buildDecisionEngine, MatchRecord as HistoricalMatchRecord } from './historical';
+import { evaluateMatch } from './evaluation';
 
 export class PredictionEngine {
+  private historicalEngine: ReturnType<typeof buildDecisionEngine> | null = null;
+
+  constructor() {
+    // Initialiser le moteur historique avec des données mockées
+    this.initializeHistoricalEngine();
+  }
+
+  private initializeHistoricalEngine() {
+    // Données historiques mockées pour FIFA Penalty
+    const mockHistoricalData: HistoricalMatchRecord[] = [
+      {
+        id: "h1",
+        date: "2026-04-20",
+        ligue: "FC26",
+        home: "Real Madrid",
+        away: "Manchester City",
+        score: "2-1",
+        option: "Victoire Real Madrid",
+        odds: 1.85,
+        stake_fcfa: 1000,
+        issue: "win",
+      },
+      {
+        id: "h2",
+        date: "2026-04-20",
+        ligue: "FC25",
+        home: "Barcelona",
+        away: "Liverpool",
+        score: "1-2",
+        option: "Victoire Liverpool",
+        odds: 2.10,
+        stake_fcfa: 1000,
+        issue: "win",
+      },
+      {
+        id: "h3",
+        date: "2026-04-19",
+        ligue: "FC25_5x5_RUSH",
+        home: "Bayern Munich",
+        away: "PSG",
+        score: "3-2",
+        option: "Handicap Bayern Munich -1",
+        odds: 1.95,
+        stake_fcfa: 1500,
+        issue: "win",
+      },
+      {
+        id: "h4",
+        date: "2026-04-19",
+        ligue: "FC24_4x4",
+        home: "Arsenal",
+        away: "Chelsea",
+        score: "2-2",
+        option: "Plus de 3.5 buts",
+        odds: 2.30,
+        stake_fcfa: 800,
+        issue: "loss",
+      },
+      {
+        id: "h5",
+        date: "2026-04-18",
+        ligue: "FC26",
+        home: "Juventus",
+        away: "Inter Milan",
+        score: "1-0",
+        option: "Victoire Juventus",
+        odds: 2.15,
+        stake_fcfa: 1200,
+        issue: "win",
+      },
+    ];
+
+    this.historicalEngine = buildDecisionEngine(mockHistoricalData, mockHistoricalData.length, {
+      minMatches: 5,
+      minRulePlayed: 2,
+    });
+  }
+
   calculatePrediction(match: Match): Prediction {
     const homeStats = mockData.getTeamStats(match.homeTeam.id);
     const awayStats = mockData.getTeamStats(match.awayTeam.id);
@@ -39,6 +120,15 @@ export class PredictionEngine {
       recommendedBet
     );
 
+    // Générer prédictions multi-bots pour les paris alternatifs
+    const botPredictions = this.generateBotPredictions(match, homeStats, awayStats);
+
+    // Générer analyse historique
+    const historicalAnalysis = this.generateHistoricalAnalysis(match);
+
+    // Générer évaluation de match
+    const matchEvaluation = this.generateMatchEvaluation(match, homeStats, awayStats);
+
     const reasoning = this.generateReasoning(
       match,
       homeStats,
@@ -51,7 +141,7 @@ export class PredictionEngine {
     const riskLevel = this.calculateRiskLevel(confidence, recommendedBet);
     const expectedValue = this.calculateExpectedValue(recommendedBet, homeWinProbability, awayWinProbability);
 
-    return {
+    const rawPrediction: Prediction = {
       matchId: match.id,
       recommendedBet,
       alternativeBets,
@@ -59,7 +149,13 @@ export class PredictionEngine {
       reasoning,
       riskLevel,
       expectedValue,
+      botPredictions,
+      historicalAnalysis,
+      matchEvaluation,
     };
+
+    // Consolider les prédictions pour éviter les contradictions
+    return this.consolidatePredictions(rawPrediction, botPredictions, historicalAnalysis, matchEvaluation);
   }
 
   private calculateTeamStrength(stats: TeamStats): number {
@@ -341,6 +437,11 @@ export class PredictionEngine {
     const awayOdds = match.odds?.awayWin || 2.0;
     const preferHome = homeOdds <= awayOdds;
 
+    // Générer quand même les prédictions multi-bots
+    const botPredictions = this.generateBotPredictions(match);
+    const historicalAnalysis = this.generateHistoricalAnalysis(match);
+    const matchEvaluation = this.generateMatchEvaluation(match);
+
     return {
       matchId: match.id,
       recommendedBet: {
@@ -354,7 +455,191 @@ export class PredictionEngine {
       reasoning: ['Signal base sur le marche actuel: historique equipe insuffisant pour une analyse statistique complete'],
       riskLevel: 'high',
       expectedValue: 0,
+      botPredictions,
+      historicalAnalysis,
+      matchEvaluation,
     };
+  }
+
+  private generateBotPredictions(match: Match, homeStats?: TeamStats, awayStats?: TeamStats) {
+    // Générer les paris alternatifs pour les bots
+    const bets: BetInput[] = [];
+
+    if (match.odds?.homeWin) {
+      bets.push({ nom: `Victoire ${match.homeTeam.name}`, cote: match.odds.homeWin });
+    }
+    if (match.odds?.awayWin) {
+      bets.push({ nom: `Victoire ${match.awayTeam.name}`, cote: match.odds.awayWin });
+    }
+    if (match.odds?.draw && match.odds.draw > 1) {
+      bets.push({ nom: 'Match nul', cote: match.odds.draw });
+    }
+
+    // Ajouter des paris alternatifs basés sur les stats ou par défaut
+    let avgGoals = 2.5; // Valeur par défaut
+    if (homeStats && awayStats) {
+      avgGoals = (homeStats.goalsFor + homeStats.goalsAgainst + awayStats.goalsFor + awayStats.goalsAgainst) / 4;
+    }
+    
+    if (avgGoals > 2.5) {
+      bets.push({ nom: 'Plus de 2.5 buts', cote: 1.85 });
+    } else {
+      bets.push({ nom: 'Moins de 2.5 buts', cote: 1.95 });
+    }
+
+    const context: MatchContext = {
+      score1: 0,
+      score2: 0,
+      minute: 0,
+    };
+
+    return genererPredictionUnifiee({
+      team1: match.homeTeam.name,
+      team2: match.awayTeam.name,
+      league: match.leagueId.toString(),
+      context,
+      bets,
+    });
+  }
+
+  private generateHistoricalAnalysis(match: Match) {
+    if (!this.historicalEngine) return null;
+
+    // Créer un candidat pour l'analyse historique
+    const candidate: HistoricalMatchRecord = {
+      id: match.id,
+      date: new Date(match.startTime).toISOString().split('T')[0],
+      ligue: match.leagueId.toString(),
+      home: match.homeTeam.name,
+      away: match.awayTeam.name,
+      option: `Victoire ${match.homeTeam.name}`,
+      odds: match.odds?.homeWin || 2.0,
+      stake_fcfa: 1000,
+      issue: "pending",
+    };
+
+    const decision = this.historicalEngine.decide(candidate);
+    const scored = this.historicalEngine.scoreCandidate(candidate);
+
+    return {
+      decision,
+      scored,
+      report: this.historicalEngine.report,
+    };
+  }
+
+  private generateMatchEvaluation(match: Match, homeStats?: TeamStats, awayStats?: TeamStats): EvaluationResult | undefined {
+    if (!homeStats || !awayStats) return undefined;
+
+    // Générer des flux basés sur les vraies stats des équipes (pas de random)
+    const homeWinRate = (homeStats.wins / (homeStats.wins + homeStats.draws + homeStats.losses)) * 100;
+    const awayWinRate = (awayStats.wins / (awayStats.wins + awayStats.draws + awayStats.losses)) * 100;
+
+    // Créer des flux basés sur la forme récente (convertir W/D/L en valeurs)
+    const formToValue = (form: string[]): number[] => {
+      return form.map(f => {
+        if (f === 'W') return 80;
+        if (f === 'D') return 50;
+        if (f === 'L') return 20;
+        return 50;
+      });
+    };
+
+    const homeFormValues = formToValue(homeStats.recentForm);
+    const awayFormValues = formToValue(awayStats.recentForm);
+
+    // Étendre les valeurs de forme à 10 points pour l'évaluation
+    const homeFlux = Array.from({ length: 10 }, (_, i) => {
+      const formIndex = i % homeFormValues.length;
+      return homeFormValues[formIndex] + (homeWinRate - 50) * 0.3;
+    });
+
+    const awayFlux = Array.from({ length: 10 }, (_, i) => {
+      const formIndex = i % awayFormValues.length;
+      return awayFormValues[formIndex] + (awayWinRate - 50) * 0.3;
+    });
+
+    // Zone nulle basée sur les draws des deux équipes
+    const totalDraws = homeStats.draws + awayStats.draws;
+    const totalMatches = homeStats.wins + homeStats.draws + homeStats.losses + awayStats.wins + awayStats.draws + awayStats.losses;
+    const drawRate = totalMatches > 0 ? (totalDraws / totalMatches) * 100 : 0;
+    const zoneNull = Array.from({ length: 10 }, () => drawRate * 0.5);
+
+    // Déterminer le consensus basé sur les bots réels
+    const botPredictions = this.generateBotPredictions(match, homeStats, awayStats);
+    const consensusBots = botPredictions?.maitre?.decision_finale?.confiance ? 4 : 3;
+
+    // Confiance basée sur la cohérence des systèmes
+    const confidence = this.calculateConfidence(homeStats, awayStats);
+
+    const evaluationInput: MatchEvaluationInput = {
+      action: "MISE PRUDENTE",
+      consensusBots,
+      confidence,
+      pickSide: (match.odds?.homeWin || 2) < (match.odds?.awayWin || 2) ? "HOME" : "AWAY",
+      winHome: homeWinRate,
+      winAway: awayWinRate,
+      homeFlux,
+      awayFlux,
+      zoneNull,
+    };
+
+    const meta = { totalMatches: totalMatches };
+
+    return evaluateMatch(evaluationInput, meta, {
+      minMatches: 10, // Plus bas pour FIFA Penalty
+      minScore: 50, // Plus permissif
+      totalBots: 5,
+    });
+  }
+
+  private consolidatePredictions(
+    kellyPrediction: Prediction,
+    botPredictions: any,
+    historicalAnalysis: any,
+    matchEvaluation: EvaluationResult | undefined
+  ): Prediction {
+    // Système de consolidation pour éviter les contradictions
+    const recommendations: string[] = [];
+    
+    // Récupérer la recommandation Kelly
+    const kellySide = kellyPrediction.recommendedBet.type === 'home_win' ? 'HOME' : 'AWAY';
+    recommendations.push(kellySide);
+
+    // Récupérer la recommandation des bots
+    if (botPredictions?.maitre?.decision_finale?.selection) {
+      const botSelection = botPredictions.maitre.decision_finale.selection;
+      if (typeof botSelection === 'string' && botSelection.includes('Victoire')) {
+        const botSide = botSelection.toLowerCase().includes(kellyPrediction.recommendedBet.description.toLowerCase().split(' ')[1]?.toLowerCase()) ? kellySide : (kellySide === 'HOME' ? 'AWAY' : 'HOME');
+        recommendations.push(botSide);
+      }
+    }
+
+    // Récupérer la recommandation de l'évaluation
+    if (matchEvaluation?.recommendation) {
+      if (matchEvaluation.recommendation.includes('V2')) {
+        recommendations.push('AWAY');
+      } else if (matchEvaluation.recommendation.includes('1X2')) {
+        recommendations.push(kellySide);
+      }
+    }
+
+    // Calculer le consensus final
+    const homeCount = recommendations.filter(r => r === 'HOME').length;
+    const awayCount = recommendations.filter(r => r === 'AWAY').length;
+    const finalSide = homeCount >= awayCount ? 'HOME' : 'AWAY';
+
+    // Ajuster la prédiction principale si contradiction majeure
+    if (kellySide !== finalSide && (homeCount > 1 || awayCount > 1)) {
+      // Contradiction détectée - ajuster la confiance
+      kellyPrediction.confidence = Math.max(30, kellyPrediction.confidence - 20);
+      kellyPrediction.reasoning.push('Conflit entre systèmes - confiance réduite');
+    }
+
+    // Ajouter le consensus au reasoning
+    kellyPrediction.reasoning.push(`Consensus multi-systèmes: ${finalSide} (${Math.max(homeCount, awayCount)}/${recommendations.length})`);
+
+    return kellyPrediction;
   }
 }
 

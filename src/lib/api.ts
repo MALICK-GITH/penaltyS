@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { ApiEndpointAnalysis, PredictionPipelineStep, Sport, League, Match, TeamStats, LiveFifaSnapshot } from '@/types';
+import { ApiEndpointAnalysis, PredictionPipelineStep, Sport, League, Match, TeamStats, LiveFifaSnapshot, Tournament } from '@/types';
+import * as tournamentService from './tournaments';
 
 const API_BASE = 'https://1xbet.ci';
 const LIVE_FEED_BASE = 'https://1xbet.com';
@@ -518,5 +519,22 @@ export const mockData = {
 
   getTeamStats(teamId: number): TeamStats | undefined {
     return this.teamStats.get(teamId);
+  },
+
+  // Tournament service integration
+  async getTournaments(options?: { penaltyOnly?: boolean; days?: number; useFallback?: boolean }) {
+    return tournamentService.getTournaments(options);
+  },
+
+  async getPenaltyTournaments() {
+    return tournamentService.getPenaltyTournaments();
+  },
+
+  async getTournamentById(tournamentId: string | number) {
+    return tournamentService.getTournamentById(tournamentId);
+  },
+
+  async getTournamentStats() {
+    return tournamentService.getTournamentStats();
   },
 };

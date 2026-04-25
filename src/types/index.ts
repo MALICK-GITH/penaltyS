@@ -58,6 +58,9 @@ export interface Prediction {
   reasoning: string[];
   riskLevel: 'low' | 'medium' | 'high';
   expectedValue: number;
+  botPredictions?: any;
+  historicalAnalysis?: any;
+  matchEvaluation?: EvaluationResult;
 }
 
 export interface BetRecommendation {
@@ -74,9 +77,49 @@ export interface TeamStats {
   losses: number;
   goalsFor: number;
   goalsAgainst: number;
-  recentForm: string[]; // ['W', 'D', 'L', 'W', 'W']
+  recentForm: string[];
   homeForm?: string[];
   awayForm?: string[];
+}
+
+export interface Tournament {
+  id: number;
+  name: string;
+  sportId: number;
+  gamesCount: number;
+  image: string | null;
+  isPenalty: boolean;
+  version: string;
+  priority: number;
+}
+
+export interface MatchEvaluationInput {
+  action?: string;
+  consensusBots?: number;
+  confidence?: number;
+  pickSide?: string;
+  winHome?: number;
+  winAway?: number;
+  homeFlux?: number[];
+  awayFlux?: number[];
+  zoneNull?: number[];
+}
+
+export interface EvaluationResult {
+  status: "FILTER_LOCKED" | "PLAY" | "NO_PLAY";
+  playable: boolean;
+  score: number;
+  breakdown: {
+    confidencePts: number;
+    consensusPts: number;
+    winPts: number;
+    fluxPts: number;
+    fluxShare: number;
+    zoneNullAvg: number | null;
+  };
+  recommendation: string;
+  reasons: string[];
+  warnings: string[];
 }
 
 export type ApiUtility = 'core_data' | 'market_context' | 'configuration' | 'marketing' | 'analytics';

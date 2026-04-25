@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { Activity, Circle, Clock, ShieldCheck, Target, Trophy, TrendingUp } from 'lucide-react';
+import { Activity, Circle, Clock, ShieldCheck, Target, Trophy, TrendingUp, Zap } from 'lucide-react';
 import { sportsApi } from '@/lib/api';
+import { getPenaltyTournaments } from '@/lib/tournaments';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ function formatMatchTime(startTime: string) {
 
 export default async function Home() {
   const snapshot = await sportsApi.getLiveFifaSnapshot();
+  const tournaments = await getPenaltyTournaments();
   const matchCounts = new Map<number, number>();
 
   snapshot.matches.forEach((match) => {
@@ -76,6 +78,41 @@ export default async function Home() {
               Marche
             </div>
             <div className="text-3xl font-bold">1 / 2</div>
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Tournois FIFA Penalty</h2>
+            <span className="text-sm text-slate-400">{tournaments.tournaments.length} tournois disponibles</span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {tournaments.tournaments.slice(0, 8).map((tournament) => (
+              <div
+                key={tournament.id}
+                className="rounded-lg border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/50 hover:bg-white/[0.07]"
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white text-sm">{tournament.name}</h3>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="rounded bg-cyan-400/20 px-2 py-0.5 text-xs text-cyan-200">
+                        {tournament.version}
+                      </span>
+                      {tournament.isPenalty && (
+                        <span className="rounded bg-emerald-400/20 px-2 py-0.5 text-xs text-emerald-200">
+                          Penalty
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Zap className="h-4 w-4 text-cyan-300 shrink-0" />
+                </div>
+                <div className="text-xs text-slate-400">
+                  {tournament.gamesCount} match{tournament.gamesCount > 1 ? 's' : ''}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 

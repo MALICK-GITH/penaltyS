@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, Calculator, Clock, ShieldAlert, Target, Trophy } from 'lucide-react';
+import { ArrowLeft, Calculator, Clock, ShieldAlert, Target, Trophy, Bot, TrendingUp } from 'lucide-react';
 import { sportsApi } from '@/lib/api';
 import { predictionEngine } from '@/lib/prediction';
 
@@ -202,6 +202,85 @@ export default async function MatchPage({
                         EV: {((altBet.odds - 1) * 0.5 * 100).toFixed(1)}%
                       </span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {prediction.botPredictions && (
+            <section className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <Bot className="h-5 w-5 text-cyan-300" />
+                <h2 className="text-xl font-semibold">Analyse Multi-Bots IA</h2>
+              </div>
+
+              {/* Décision finale du Maître Pronostics */}
+              {prediction.botPredictions.maitre && (
+                <div className="mb-6 rounded-lg border border-cyan-400/30 bg-cyan-400/10 p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-cyan-200" />
+                    <p className="text-sm font-semibold text-cyan-100">Décision Finale - Maître Pronostics</p>
+                  </div>
+                  <div className="mb-3">
+                    <p className="text-2xl font-bold text-white">
+                      {prediction.botPredictions.maitre.decision_finale.pari_choisi || 'Aucun pari recommandé'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300">
+                      {prediction.botPredictions.maitre.decision_finale.recommandation}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    {prediction.botPredictions.maitre.decision_finale.cote && (
+                      <span className="rounded bg-white/10 px-3 py-2">
+                        Cote {prediction.botPredictions.maitre.decision_finale.cote.toFixed(2)}
+                      </span>
+                    )}
+                    {prediction.botPredictions.maitre.decision_finale.confiance_numerique && (
+                      <span className="rounded bg-white/10 px-3 py-2">
+                        Confiance {prediction.botPredictions.maitre.decision_finale.confiance_numerique}%
+                      </span>
+                    )}
+                    {prediction.botPredictions.maitre.decision_finale.niveau_confiance && (
+                      <span className="rounded bg-cyan-400/20 px-3 py-2 text-cyan-100">
+                        {prediction.botPredictions.maitre.decision_finale.niveau_confiance}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 text-sm text-slate-300">
+                    Consensus: {prediction.botPredictions.maitre.analyse_bots.consensus}
+                  </div>
+                </div>
+              )}
+
+              {/* Analyse des bots individuels */}
+              <div className="space-y-4">
+                {Object.entries(prediction.botPredictions.bots || {}).map(([botName, botData]: [string, any]) => (
+                  <div key={botName} className="rounded border border-white/10 bg-white/[0.04] p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-400">{botData.specialite}</p>
+                        <p className="font-semibold text-white">{botData.bot_name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-cyan-200">{botData.confiance_globale}%</p>
+                      </div>
+                    </div>
+                    {botData.paris_recommandes && botData.paris_recommandes.length > 0 && (
+                      <div className="space-y-2">
+                        {botData.paris_recommandes.map((bet: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between rounded bg-white/5 px-3 py-2 text-sm">
+                            <span className="text-slate-200">{bet.nom}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-slate-300">{bet.cote.toFixed(2)}</span>
+                              <span className="rounded bg-cyan-400/20 px-2 py-1 text-cyan-100">
+                                {bet.confiance}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
